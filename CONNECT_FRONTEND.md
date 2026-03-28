@@ -6,7 +6,7 @@ In your `src/hooks/useLocalData.js`, the `API_URL` is already set.
 Change it to your backend server:
 
 ```js
-// src/lib/supabase.js  →  REPLACE with this in useLocalData.js
+
 const API_URL = 'http://localhost:8000/api'
 ```
 
