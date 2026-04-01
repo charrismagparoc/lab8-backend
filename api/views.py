@@ -55,6 +55,12 @@ def auth_login(request):
         }
     })
 
+@api_view(['POST'])
+def auth_logout(request):
+    user_name = request.data.get('user_name', 'Unknown User')
+    log_action(f'Signed out: {user_name}', 'Auth', user_name)
+    return Response({'ok': True})
+
 
 @api_view(['POST'])
 def auth_register(request):
