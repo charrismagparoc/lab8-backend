@@ -4,7 +4,7 @@ from . import views
 urlpatterns = [
     # Auth
     path('auth/login/',    views.auth_login,    name='auth-login'),
-    path('auth/logout/', views.auth_logout, name='auth-logout'),
+    path('auth/logout/',   views.auth_logout,   name='auth-logout'),
     path('auth/register/', views.auth_register, name='auth-register'),
 
     # Users
@@ -23,7 +23,7 @@ urlpatterns = [
     path('evacuation-centers/',      views.evac_list,   name='evac-list'),
     path('evacuation-centers/<pk>/', views.evac_detail, name='evac-detail'),
 
-    # Residents (ADD = mobile only, EDIT/VIEW = both)
+    # Residents
     path('residents/',      views.residents_list,   name='residents-list'),
     path('residents/<pk>/', views.residents_detail, name='residents-detail'),
 
@@ -34,6 +34,6 @@ urlpatterns = [
     # Activity Log
     path('activity-log/', views.activity_log_list, name='activity-log'),
 
-    # Dashboard summary
-    path('dashboard/', views.dashboard_summary, name='dashboard-summary'),
+    # Dashboard
+    path('dashboard/', views.dashboard_summary, name='dashboard'),
 ]
