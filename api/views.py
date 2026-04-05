@@ -17,7 +17,7 @@ def log_action(action, log_type, user_name='System', urgent=False):
     )
 
 
-# ─── AUTH ──────────────────────────────────────────────────────────────────────
+# AUTH 
 
 @api_view(['POST'])
 def auth_login(request):
@@ -73,7 +73,7 @@ def auth_register(request):
     return Response(serializer.errors, status=400)
 
 
-# ─── USERS ─────────────────────────────────────────────────────────────────────
+# USERS 
 
 @api_view(['GET', 'POST'])
 def users_list(request):
@@ -101,7 +101,7 @@ def users_detail(request, pk):
 
     if request.method in ['PATCH', 'PUT']:
         data = request.data.copy()
-        # Don't overwrite password if blank
+        
         if not data.get('password'):
             data.pop('password', None)
         serializer = SystemUserSerializer(user, data=data, partial=True)
@@ -118,7 +118,7 @@ def users_detail(request, pk):
         return Response(status=204)
 
 
-# ─── INCIDENTS ─────────────────────────────────────────────────────────────────
+# INCIDENTS 
 
 @api_view(['GET', 'POST'])
 def incidents_list(request):
@@ -164,7 +164,7 @@ def incidents_detail(request, pk):
         return Response(status=204)
 
 
-# ─── ALERTS ────────────────────────────────────────────────────────────────────
+# ALERTS
 
 @api_view(['GET', 'POST'])
 def alerts_list(request):
@@ -208,7 +208,7 @@ def alerts_detail(request, pk):
         return Response(status=204)
 
 
-# ─── EVAC CENTERS ──────────────────────────────────────────────────────────────
+# EVAC CENTERS 
 
 @api_view(['GET', 'POST'])
 def evac_list(request):
@@ -249,7 +249,7 @@ def evac_detail(request, pk):
         return Response(status=204)
 
 
-# ─── RESIDENTS ─────────────────────────────────────────────────────────────────
+# RESIDENTS
 # ADD via mobile only — EDIT/VIEW via both web and mobile
 
 @api_view(['GET', 'POST'])
@@ -258,7 +258,7 @@ def residents_list(request):
         residents = Resident.objects.all()
         return Response(ResidentSerializer(residents, many=True).data)
 
-    # POST is used by mobile app to add residents
+    
     serializer = ResidentSerializer(data=request.data)
     if serializer.is_valid():
         resident = serializer.save()
@@ -296,7 +296,7 @@ def residents_detail(request, pk):
         return Response(status=204)
 
 
-# ─── RESOURCES ─────────────────────────────────────────────────────────────────
+# RESOURCES
 
 @api_view(['GET', 'POST'])
 def resources_list(request):
@@ -337,7 +337,7 @@ def resources_detail(request, pk):
         return Response(status=204)
 
 
-# ─── ACTIVITY LOG ──────────────────────────────────────────────────────────────
+# ACTIVITY LOG 
 
 @api_view(['GET', 'POST'])
 def activity_log_list(request):
@@ -352,7 +352,7 @@ def activity_log_list(request):
     return Response(serializer.errors, status=400)
 
 
-# ─── DASHBOARD SUMMARY ─────────────────────────────────────────────────────────
+# DASHBOARD SUMMARY 
 
 @api_view(['GET'])
 def dashboard_summary(request):
