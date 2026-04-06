@@ -3,7 +3,6 @@ import uuid
 
 
 class SystemUser(models.Model):
-    """IDRMS system users (separate from Django auth users)"""
     ROLE_CHOICES = [('Admin', 'Admin'), ('Staff', 'Staff')]
     STATUS_CHOICES = [('Active', 'Active'), ('Inactive', 'Inactive')]
 
@@ -14,6 +13,8 @@ class SystemUser(models.Model):
     role = models.CharField(max_length=20, choices=ROLE_CHOICES, default='Staff')
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='Active')
     last_login = models.DateTimeField(null=True, blank=True)
+    last_seen = models.DateTimeField(null=True, blank=True)
+    is_online = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -163,6 +164,8 @@ class ActivityLog(models.Model):
     action = models.TextField()
     type = models.CharField(max_length=50)
     user_name = models.CharField(max_length=200, default='System')
+    user_role = models.CharField(max_length=20, default='System')
+    user_status = models.CharField(max_length=20, default='')
     urgent = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
 

@@ -1,5 +1,4 @@
 from django.utils import timezone
-from rest_framework import status
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
@@ -11,17 +10,21 @@ from .serializers import (
 )
 
 
-def log_action(action, log_type, user_name='System', urgent=False):
+def log_action(action, log_type, user_name='System', urgent=False, user_role='System', user_status=''):
     ActivityLog.objects.create(
-        action=action, type=log_type, user_name=user_name, urgent=urgent
+        action=action,
+        type=log_type,
+        user_name=user_name,
+        user_role=user_role,
+        user_status=user_status,
+        urgent=urgent
     )
 
 
-# AUTH 
+# ─── AUTH ──────────────────────────────────────────────────────────────────────
 
 @api_view(['POST'])
 def auth_login(request):
-    """Login endpoint used by both web and mobile"""
     email = request.data.get('email', '').strip().lower()
     password = request.data.get('password', '')
 
@@ -36,35 +39,73 @@ def auth_login(request):
     if user.password != password:
         return Response({'ok': False, 'msg': 'Invalid credentials.'}, status=401)
 
-    if user.status == 'Inactive':
-        return Response({'ok': False, 'msg': 'Account is inactive.'}, status=403)
+    # Block login only if Admin manually set the account inactive
+    if user.role != 'Admin' and user.status == 'Inactive' and not user.is_online:
+        # Allow login — status will be corrected below
+        pass
 
     user.last_login = timezone.now()
-    user.save(update_fields=['last_login'])
+    user.last_seen  = timezone.now()
+    user.is_online  = True
 
-    log_action(f'Signed in: {user.name}', 'Auth', user.name)
+    # Auto-set status on login
+    if user.role != 'Admin':
+        user.status = 'Active'
+    else:
+        user.status = 'Active'  # Admin always Active
+
+    user.save(update_fields=['last_login', 'last_seen', 'is_online', 'status'])
+
+    log_action(
+        f'Signed in: {user.name} ({user.role})',
+        'Auth',
+        user.name,
+        False,
+        user.role,
+        'Active'
+    )
 
     return Response({
         'ok': True,
         'user': {
-            'id': str(user.id),
-            'name': user.name,
-            'email': user.email,
-            'role': user.role,
+            'id':     str(user.id),
+            'name':   user.name,
+            'email':  user.email,
+            'role':   user.role,
             'status': user.status,
         }
     })
 
+
 @api_view(['POST'])
 def auth_logout(request):
     user_name = request.data.get('user_name', 'Unknown User')
-    log_action(f'Signed out: {user_name}', 'Auth', user_name)
+    user_id   = request.data.get('user_id')
+    user_role = request.data.get('user_role', 'Staff')
+
+    if user_id and user_role != 'Admin':
+        try:
+            user = SystemUser.objects.get(pk=user_id)
+            user.is_online  = False
+            user.status     = 'Inactive'   # ← sync status on logout
+            user.last_seen  = timezone.now()
+            user.save(update_fields=['is_online', 'last_seen', 'status'])
+        except SystemUser.DoesNotExist:
+            pass
+
+    log_action(
+        f'Signed out: {user_name} ({user_role})',
+        'Auth',
+        user_name,
+        False,
+        user_role,
+        'Active' if user_role == 'Admin' else 'Inactive'
+    )
     return Response({'ok': True})
 
 
 @api_view(['POST'])
 def auth_register(request):
-    """Register a new system user"""
     serializer = SystemUserSerializer(data=request.data)
     if serializer.is_valid():
         user = serializer.save()
@@ -73,11 +114,66 @@ def auth_register(request):
     return Response(serializer.errors, status=400)
 
 
-# USERS 
+# ─── HEARTBEAT ─────────────────────────────────────────────────────────────────
+
+@api_view(['POST'])
+def auth_heartbeat(request):
+    user_id = request.data.get('user_id')
+    if not user_id:
+        return Response({'ok': False, 'msg': 'user_id required.'}, status=400)
+    try:
+        user = SystemUser.objects.get(pk=user_id)
+        if user.role != 'Admin':
+            user.is_online = True
+            user.status    = 'Active'      # ← keep status in sync on heartbeat
+            user.last_seen = timezone.now()
+            user.save(update_fields=['is_online', 'last_seen', 'status'])
+        return Response({'ok': True})
+    except SystemUser.DoesNotExist:
+        return Response({'ok': False, 'msg': 'User not found.'}, status=404)
+
+
+# ─── MARK OFFLINE ──────────────────────────────────────────────────────────────
+
+@api_view(['POST'])
+def auth_offline(request):
+    user_id   = request.data.get('user_id')
+    user_name = request.data.get('user_name', '')
+    if not user_id:
+        return Response({'ok': False, 'msg': 'user_id required.'}, status=400)
+    try:
+        user = SystemUser.objects.get(pk=user_id)
+        if user.role != 'Admin':
+            user.is_online = False
+            user.status    = 'Inactive'    # ← sync status when going offline
+            user.last_seen = timezone.now()
+            user.save(update_fields=['is_online', 'last_seen', 'status'])
+            log_action(
+                f'{user.name} went offline',
+                'Auth',
+                user.name,
+                False,
+                user.role,
+                'Inactive'
+            )
+        return Response({'ok': True})
+    except SystemUser.DoesNotExist:
+        return Response({'ok': False, 'msg': 'User not found.'}, status=404)
+
+
+# ─── USERS ─────────────────────────────────────────────────────────────────────
 
 @api_view(['GET', 'POST'])
 def users_list(request):
     if request.method == 'GET':
+        two_min_ago = timezone.now() - timezone.timedelta(minutes=2)
+        # Auto-expire stale online Staff — sync both is_online AND status
+        SystemUser.objects.filter(
+            is_online=True,
+            last_seen__lt=two_min_ago,
+            role='Staff'
+        ).update(is_online=False, status='Inactive')
+
         users = SystemUser.objects.all()
         return Response(SystemUserPublicSerializer(users, many=True).data)
 
@@ -101,9 +197,16 @@ def users_detail(request, pk):
 
     if request.method in ['PATCH', 'PUT']:
         data = request.data.copy()
-        
         if not data.get('password'):
             data.pop('password', None)
+
+        # Prevent manual override of status — always derive from role + is_online
+        if data.get('role') == 'Admin':
+            data['status'] = 'Active'
+        else:
+            # Keep current is_online state, don't let form overwrite it
+            data['status'] = 'Active' if user.is_online else 'Inactive'
+
         serializer = SystemUserSerializer(user, data=data, partial=True)
         if serializer.is_valid():
             user = serializer.save()
@@ -118,7 +221,7 @@ def users_detail(request, pk):
         return Response(status=204)
 
 
-# INCIDENTS 
+# ─── INCIDENTS ─────────────────────────────────────────────────────────────────
 
 @api_view(['GET', 'POST'])
 def incidents_list(request):
@@ -164,7 +267,7 @@ def incidents_detail(request, pk):
         return Response(status=204)
 
 
-# ALERTS
+# ─── ALERTS ────────────────────────────────────────────────────────────────────
 
 @api_view(['GET', 'POST'])
 def alerts_list(request):
@@ -208,7 +311,7 @@ def alerts_detail(request, pk):
         return Response(status=204)
 
 
-# EVAC CENTERS 
+# ─── EVAC CENTERS ──────────────────────────────────────────────────────────────
 
 @api_view(['GET', 'POST'])
 def evac_list(request):
@@ -249,8 +352,7 @@ def evac_detail(request, pk):
         return Response(status=204)
 
 
-# RESIDENTS
-# ADD via mobile only — EDIT/VIEW via both web and mobile
+# ─── RESIDENTS ─────────────────────────────────────────────────────────────────
 
 @api_view(['GET', 'POST'])
 def residents_list(request):
@@ -258,7 +360,6 @@ def residents_list(request):
         residents = Resident.objects.all()
         return Response(ResidentSerializer(residents, many=True).data)
 
-    
     serializer = ResidentSerializer(data=request.data)
     if serializer.is_valid():
         resident = serializer.save()
@@ -296,7 +397,7 @@ def residents_detail(request, pk):
         return Response(status=204)
 
 
-# RESOURCES
+# ─── RESOURCES ─────────────────────────────────────────────────────────────────
 
 @api_view(['GET', 'POST'])
 def resources_list(request):
@@ -337,7 +438,7 @@ def resources_detail(request, pk):
         return Response(status=204)
 
 
-# ACTIVITY LOG 
+# ─── ACTIVITY LOG ──────────────────────────────────────────────────────────────
 
 @api_view(['GET', 'POST'])
 def activity_log_list(request):
@@ -352,11 +453,10 @@ def activity_log_list(request):
     return Response(serializer.errors, status=400)
 
 
-# DASHBOARD SUMMARY 
+# ─── DASHBOARD SUMMARY ─────────────────────────────────────────────────────────
 
 @api_view(['GET'])
 def dashboard_summary(request):
-    """Single endpoint for dashboard stats"""
     active_incidents = Incident.objects.filter(status__in=['Active', 'Pending']).count()
     total_residents  = Resident.objects.count()
     evacuated        = Resident.objects.filter(evacuation_status='Evacuated').count()
@@ -379,8 +479,8 @@ def dashboard_summary(request):
             'safe':        Resident.objects.filter(evacuation_status='Safe').count(),
         },
         'evacuation': {
-            'open_centers': open_centers,
-            'total_centers': EvacCenter.objects.count(),
+            'open_centers':    open_centers,
+            'total_centers':   EvacCenter.objects.count(),
             'total_capacity':  total_cap,
             'total_occupancy': total_occ,
         },
