@@ -1,5 +1,5 @@
 from pathlib import Path
-
+DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 SECRET_KEY = 'django-insecure-idrms-kauswagan-bdrrmc-2025-secret-key-change-in-prod'
